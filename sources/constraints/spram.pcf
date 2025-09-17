@@ -1,0 +1,15 @@
+# Minimal PCF for SPRAM timing constraints
+# Target: iCE40 UP5K-SG48 package
+
+# =============================================================================
+# TIMING CONSTRAINTS
+# =============================================================================
+
+# Primary clock frequency constraint
+# 100 MHz target (conservative vs measured 136 MHz capability)
+set_frequency clka 100
+
+# =============================================================================
+# NOTE: Pin assignments removed to test timing constraint functionality
+# NextPNR will auto-assign pins when no physical constraints are specified
+# =============================================================================
