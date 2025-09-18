@@ -1,0 +1,16 @@
+# PCF for DPDISTRAM - iCE40 UP5K-SG48 package
+# Timing constraints only - let NextPNR auto-place pins
+
+# =============================================================================
+# TIMING CONSTRAINTS
+# =============================================================================
+
+# Primary clock frequency constraints
+set_frequency clka 100
+set_frequency clkb 100
+
+# =============================================================================
+# NOTE: Auto-placement enabled
+# NextPNR will automatically assign all pins without explicit constraints
+# This should resolve placement issues with invalid pin numbers
+# =============================================================================
