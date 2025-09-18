@@ -132,27 +132,33 @@ module spram #(
         if (IGNORE_INIT_SYNTH == 0) begin : gen_init_both
             // Apply to both simulation and synthesis
             initial begin
-                if (MEMORY_INIT_FILE != "none") begin
+                // ALWAYS initialize to zeros first (default safe state)
+                for (int i = 0; i < MEMORY_DEPTH; i++) begin
+                    memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
+                end
+
+                // THEN conditionally load from file (overlay)
+                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
                     $readmemh(MEMORY_INIT_FILE, memory);
-                    $display("SPRAM: Initialized from file %s", MEMORY_INIT_FILE);
+                    $display("SPRAM: Loaded memory from file: %s", MEMORY_INIT_FILE);
                 end else begin
-                    for (int i = 0; i < MEMORY_DEPTH; i++) begin
-                        memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
-                    end
-                    $display("SPRAM: Initialized to zeros");
+                    $display("SPRAM: Initialized to zeros (no file specified)");
                 end
             end
         end else begin : gen_init_sim_only
             // Simulation only initialization
-            `ifndef SYNTHESIS
+            `ifdef SIMULATION
                 initial begin
-                    if (MEMORY_INIT_FILE != "none") begin
+                    // ALWAYS initialize to zeros first (default safe state)
+                    for (int i = 0; i < MEMORY_DEPTH; i++) begin
+                        memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
+                    end
+
+                    // THEN conditionally load from file (overlay)
+                    if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
                         $readmemh(MEMORY_INIT_FILE, memory);
-                        $display("SPRAM: Initialized from file %s (simulation only)", MEMORY_INIT_FILE);
+                        $display("SPRAM: Loaded memory from file (simulation only): %s", MEMORY_INIT_FILE);
                     end else begin
-                        for (int i = 0; i < MEMORY_DEPTH; i++) begin
-                            memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
-                        end
                         $display("SPRAM: Initialized to zeros (simulation only)");
                     end
                 end

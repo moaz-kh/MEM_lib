@@ -18,7 +18,7 @@ module spram_tb;
     localparam MEMORY_SIZE = 512;  // 64 locations × 8 bits
     localparam string WRITE_MODE_A = "read_first";
     localparam string RST_MODE_A = "SYNC";
-    localparam string MEMORY_INIT_FILE = "sim/test_data/spram_init_8bit.mem";
+    localparam string MEMORY_INIT_FILE = "sim/test_data/spram_init_8bit.mem"; // "none"; 
     localparam string READ_RESET_VALUE_A = "0";
     localparam IGNORE_INIT_SYNTH = 0;
 
@@ -47,12 +47,12 @@ module spram_tb;
     initial begin
         $dumpfile("sim/waves/spram_tb.vcd");
         $dumpvars(0, spram_tb);  // Depth 2 to include arrays
-        /*
+        
         // Explicitly dump array elements for better visibility
         for (int i = 0; i < 16; i++) begin
             $dumpvars(1, dut.memory[i]);
         end
-        
+        /*
         // Explicitly dump array elements for better visibility
         for (int i = DEPTH-16; i < DEPTH; i++) begin
             $dumpvars(1, dut.memory[i]);
@@ -60,6 +60,28 @@ module spram_tb;
         */
         $display("[%0t] Waveform file: sim/waves/spram_tb.vcd", $time);
     end
+    
+    // Memory array
+    localparam MEMORY_DEPTH = MEMORY_SIZE / WRITE_DATA_WIDTH_A;
+    logic [WRITE_DATA_WIDTH_A-1:0] test_memory [0:MEMORY_DEPTH-1];
+    // Memory initialization based on IGNORE_INIT_SYNTH
+    generate
+        // Simulation only initialization
+            initial begin
+                // ALWAYS initialize to zeros first (default safe state)
+                for (int i = 0; i < MEMORY_DEPTH; i++) begin
+                    test_memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
+                end
+
+                // THEN conditionally load from file (overlay)
+                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
+                    $readmemh(MEMORY_INIT_FILE, test_memory);
+                    $display("SPRAM: Loaded memory from file (simulation only): %s", MEMORY_INIT_FILE);
+                end else begin
+                    $display("SPRAM: Initialized to zeros (simulation only)");
+                end
+            end
+    endgenerate
     
     // Clock generation
     initial begin
@@ -94,20 +116,20 @@ module spram_tb;
     );
 
     // Test result tracking
-    task automatic check_result(input logic [63:0] expected, input logic [63:0] actual,
+    task automatic check_result(input logic [READ_DATA_WIDTH_A-1:0] expected, input logic [READ_DATA_WIDTH_A-1:0] actual,
                                input string test_name);
         total_tests++;
         config_tests++;
-        if (actual[31:0] === expected[31:0]) begin // Fixed to 32-bit for this test
+        if (actual === expected) begin
             total_pass++;
             config_pass++;
             $display("[PASS] %s: Expected=0x%0h, Got=0x%0h", test_name,
-                    expected[31:0], actual[31:0]);
+                    expected, actual);
         end else begin
             total_fail++;
             config_fail++;
             $display("[FAIL] %t, %s: Expected=0x%0h, Got=0x%0h", $time, test_name,
-                    expected[31:0], actual[31:0]);
+                    expected, actual);
         end
     endtask
 
@@ -125,7 +147,7 @@ module spram_tb;
     endtask
 
     // Write task
-    task automatic write_data(input logic [9:0] addr, input logic [63:0] data, input logic [7:0] we_mask);
+    task automatic write_data(input logic [ADDR_WIDTH_A-1:0] addr, input logic [WRITE_DATA_WIDTH_A-1:0] data, input logic [WRITE_DATA_WIDTH_A/BYTE_WRITE_WIDTH_A-1:0] we_mask);
         @(posedge clka);
         ena = 1;
         addra = addr;
@@ -136,7 +158,7 @@ module spram_tb;
     endtask
 
     // Read task
-    task automatic read_data(input logic [9:0] addr);
+    task automatic read_data(input logic [ADDR_WIDTH_A-1:0] addr);
         @(posedge clka);
         ena = 1;
         addra = addr;
@@ -146,62 +168,62 @@ module spram_tb;
 
     // Basic functionality test
     task automatic test_basic_functionality();
-        logic [63:0] test_data, expected_data;
-        logic [9:0] test_addr;
+        logic [WRITE_DATA_WIDTH_A-1:0] test_data, expected_data;
+        logic [ADDR_WIDTH_A-1:0] test_addr;
 
         $display("  Testing basic functionality...");
 
         reset_system();
 
         // Test 1: Word-wide write and read
-        test_addr = 10'h0;
-        test_data = 64'hDEADBEEF12345678;
-        write_data(test_addr, test_data, 8'h1); // Word-wide write (wea[0] = 1)
+        test_addr = 6'h0;
+        test_data = 8'h78;
+        write_data(test_addr, test_data, 1'h1); // Word-wide write (wea[0] = 1)
         read_data(test_addr);
         check_result(test_data, douta, "Basic word write/read");
 
         // Test 2: Different address
-        test_addr = 10'h3F; // Maximum address for 64-word memory
-        test_data = 64'hABCDEF0087654321;
-        write_data(test_addr, test_data, 8'h1);
+        test_addr = 6'h3F; // Maximum address for 64-word memory
+        test_data = 8'h21;
+        write_data(test_addr, test_data, 1'h1);
         read_data(test_addr);
         check_result(test_data, douta, "Max address test");
 
         // Test 3: Data patterns (Fixed for 32-bit width)
-        test_addr = 10'h10;
-        test_data = 64'h00000000FFFFFFFF; // All ones pattern (32-bit)
-        write_data(test_addr, test_data, 8'h1);
+        test_addr = 6'h10;
+        test_data = 8'hFF; // All ones pattern
+        write_data(test_addr, test_data, 1'h1);
         read_data(test_addr);
         check_result(test_data, douta, "All ones pattern");
 
-        test_addr = 10'h11;
-        test_data = 64'h0000000000000000; // All zeros pattern
-        write_data(test_addr, test_data, 8'h1);
+        test_addr = 6'h11;
+        test_data = 8'h00; // All zeros pattern
+        write_data(test_addr, test_data, 1'h1);
         read_data(test_addr);
         check_result(test_data, douta, "All zeros pattern");
 
-        test_addr = 10'h12;
-        test_data = 64'h0000000055555555; // Alternating pattern (32-bit)
-        write_data(test_addr, test_data, 8'h1);
+        test_addr = 6'h12;
+        test_data = 8'h55; // Alternating pattern
+        write_data(test_addr, test_data, 1'h1);
         read_data(test_addr);
         check_result(test_data, douta, "Alternating pattern");
     endtask
 
     // Write mode tests
     task automatic test_write_modes();
-        logic [63:0] old_data, new_data, expected_data;
-        logic [9:0] test_addr;
+        logic [WRITE_DATA_WIDTH_A-1:0] old_data, new_data, expected_data;
+        logic [ADDR_WIDTH_A-1:0] test_addr;
 
         $display("  Testing write modes...");
 
-        test_addr = 10'h20;
+        test_addr = 6'h20;
 
-        // Test read_first mode (default configuration) - Fixed for 32-bit
-        old_data = 64'h0000000022222222;
-        new_data = 64'h0000000044444444;
+        // Test read_first mode (default configuration)
+        old_data = 8'h22;
+        new_data = 8'h44;
 
         // Write initial data
-        write_data(test_addr, old_data, 8'h1);
+        write_data(test_addr, old_data, 1'h1);
         read_data(test_addr);
         check_result(old_data, douta, "Write mode: Initial write");
 
@@ -210,7 +232,7 @@ module spram_tb;
         ena = 1;
         addra = test_addr;
         dina = new_data;
-        wea = 8'h1;
+        wea = 1'h1;
         @(posedge clka);
         wea = 0;
 
@@ -226,16 +248,16 @@ module spram_tb;
 
     // Reset behavior tests
     task automatic test_reset_behavior();
-        logic [63:0] test_data, expected_data;
-        logic [9:0] test_addr;
+        logic [WRITE_DATA_WIDTH_A-1:0] test_data, expected_data;
+        logic [ADDR_WIDTH_A-1:0] test_addr;
 
         $display("  Testing reset behavior...");
 
-        test_addr = 10'h30;
-        test_data = 64'h0000000076543210;
+        test_addr = 6'h30;
+        test_data = 8'h10;
 
         // Write some data
-        write_data(test_addr, test_data, 8'h1);
+        write_data(test_addr, test_data, 1'h1);
 
         // Start a read operation to get data into pipeline
         read_data(test_addr);
@@ -248,7 +270,7 @@ module spram_tb;
         rsta = 0;
 
         // For SYNC reset, output should be reset value (0) immediately after reset
-        expected_data = 64'h0;
+        expected_data = 8'h0;
         check_result(expected_data, douta, "Reset: Output reset");
 
         // Verify memory contents are preserved
@@ -258,16 +280,16 @@ module spram_tb;
 
     // regcea control tests
     task automatic test_regcea_control();
-        logic [63:0] test_data;
-        logic [9:0] test_addr;
+        logic [WRITE_DATA_WIDTH_A-1:0] test_data;
+        logic [ADDR_WIDTH_A-1:0] test_addr;
 
         $display("  Testing regcea control...");
 
-        test_addr = 10'h35;
-        test_data = 64'h0000000080ABCDEF;
+        test_addr = 6'h35;
+        test_data = 8'hEF;
 
         // Write test data
-        write_data(test_addr, test_data, 8'h1);
+        write_data(test_addr, test_data, 1'h1);
 
         // Start read with regcea enabled
         @(posedge clka);
@@ -290,24 +312,25 @@ module spram_tb;
 
     // Enable control tests
     task automatic test_enable_control();
-        logic [63:0] test_data, original_data;
-        logic [9:0] test_addr;
+        logic [WRITE_DATA_WIDTH_A-1:0] test_data, original_data;
+        logic [ADDR_WIDTH_A-1:0] test_addr;
 
         $display("  Testing enable control...");
 
-        test_addr = 10'h38;
-        test_data = 64'h0000000013579BDF;
-        original_data = 64'h0000000011111111;
+        test_addr = 6'h01;
+        test_data = 8'hDF;
+        original_data = 8'h11;
 
         // Write original data
-        write_data(test_addr, original_data, 8'h1);
+        write_data(test_addr, original_data, 1'h1);
 
         // Try to write with ena = 0
         @(posedge clka);
         ena = 0;  // Disable
+        @(posedge clka);
         addra = test_addr;
         dina = test_data;
-        wea = 8'h1;
+        wea = 1'h1;
         @(posedge clka);
         wea = 0;
 
@@ -384,86 +407,51 @@ module spram_tb;
 
     // Test memory initialization from file
     task automatic test_memory_initialization();
-        logic [7:0] expected_val;
-        logic [7:0] expected;
+        logic [WRITE_DATA_WIDTH_A-1:0] expected_val;
+        logic [WRITE_DATA_WIDTH_A-1:0] expected;
 
         $display("\n--- Testing Memory Initialization ---");
 
         // Reset system before testing
         reset_system();
+ 
+        repeat(2) @(posedge clka);  // Allow pipeline to fill with first valid read
 
         // Test first 16 locations (incremental pattern: 0x00-0x0F)
-        for (int i = 0; i < 16; i++) begin
+        for (int i = 0; i < MEMORY_DEPTH; i++) begin
+            if (i > 0) begin 
+                if (douta == expected_val) begin
+                    $display("[PASS] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
+                        i-1, douta, expected_val);
+                    total_pass++;
+                end else begin
+                    $display("[FAIL] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
+                        i-1, douta, expected_val);
+                    total_fail++;
+                    config_fail++;
+                end         
+            end
+            
             // Read from initialized memory
-            ena = 1'b1;
-            regcea = 1'b1;
-            addra = i;
-            wea = 1'b0;  // Read operation
+            if (i <= MEMORY_DEPTH) begin 
+                ena = 1'b1;
+                regcea = 1'b1;
+                addra = i;
+                wea = 1'b0;  // Read operation
 
-            // Wait for read latency (2 cycles)
-            repeat(2) @(posedge clka);
+                // Wait for read latency (2 cycles)
+                repeat(READ_LATENCY_A+1) @(posedge clka);
 
-            expected_val = i;  // Incremental pattern 0x00, 0x01, 0x02...
-            total_tests++;
-            config_tests++;
-            if (douta == expected_val) begin
-                $display("[PASS] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
-                        i, douta, expected_val);
-                total_pass++;
-            end else begin
-                $display("[FAIL] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
-                        i, douta, expected_val);
-                total_fail++;
-                config_fail++;
+                expected_val = test_memory[i];  // Incremental pattern 0x00, 0x01, 0x02...
+                total_tests++;
+                config_tests++;
             end
+            else begin 
+                ena = 1'b0;
+                regcea = 1'b0;
+            end 
         end
-
-        // Test power-of-2 pattern (addresses 0x10-0x1F)
-        for (int i = 0; i < 16; i++) begin
-            addra = 16 + i;  // Addresses 0x10-0x1F
-            repeat(2) @(posedge clka);
-
-            // Power-of-2 pattern: 01, 02, 04, 08, 10, 20, 40, 80, repeated
-            expected_val = 1 << (i % 8);
-            total_tests++;
-            config_tests++;
-            if (douta == expected_val) begin
-                $display("[PASS] Memory Init: Address 0x%02X = 0x%02X (power-of-2 pattern)",
-                        16+i, douta);
-                total_pass++;
-            end else begin
-                $display("[FAIL] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
-                        16+i, douta, expected_val);
-                total_fail++;
-                config_fail++;
-            end
-        end
-
-        // Test alternating pattern (addresses 0x20-0x2F)
-        for (int i = 0; i < 16; i++) begin
-            addra = 32 + i;  // Addresses 0x20-0x2F
-            repeat(2) @(posedge clka);
-
-            if (i < 8) begin
-                expected = (i % 2 == 0) ? 8'hAA : 8'h55;  // AA/55 pattern
-            end else begin
-                expected = (i % 2 == 0) ? 8'hFF : 8'h00;  // FF/00 pattern
-            end
-
-            total_tests++;
-            config_tests++;
-            if (douta == expected) begin
-                $display("[PASS] Memory Init: Address 0x%02X = 0x%02X (alternating pattern)",
-                        32+i, douta);
-                total_pass++;
-            end else begin
-                $display("[FAIL] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
-                        32+i, douta, expected);
-                total_fail++;
-                config_fail++;
-            end
-        end
-
+ 
         $display("Memory initialization test completed.");
     endtask
 

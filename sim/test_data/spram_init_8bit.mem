@@ -1,8 +1,3 @@
-// 8-bit Memory initialization file for SPRAM
-// 64 locations (6-bit address space: 0x00-0x3F)
-// Each line represents one 8-bit memory location
-
-// Test pattern section (addresses 0x00-0x0F): Incremental values
 00
 01
 02
@@ -19,8 +14,6 @@
 0D
 0E
 0F
-
-// Test pattern section (addresses 0x10-0x1F): Powers of 2
 01
 02
 04
@@ -37,8 +30,6 @@
 20
 40
 80
-
-// Test pattern section (addresses 0x20-0x2F): Alternating patterns
 AA
 55
 AA
@@ -55,8 +46,6 @@ FF
 00
 FF
 00
-
-// Test pattern section (addresses 0x30-0x3F): Random test values
 DE
 AD
 BE
