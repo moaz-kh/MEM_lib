@@ -81,7 +81,6 @@ module dpdistram_tb;
         .IGNORE_INIT_SYNTH(0)
     ) dut (
         .clka(clka),
-        .clkb(clkb),
         .rsta(rsta),
         .rstb(rstb),
         .ena(ena),
@@ -118,16 +117,12 @@ module dpdistram_tb;
         $display("[VCD] Waveform file: sim/waves/dpdistram_tb.vcd");
     end
 
-    // Clock generation - independent clocks
+    // Clock generation - common clock (clkb = clka per single-clock rule)
     initial begin
         clka = 0;
-        forever #5 clka = ~clka; // 100MHz clock A
+        forever #5 clka = ~clka; // 100MHz
     end
-
-    initial begin
-        clkb = 0;
-        forever #5 clkb = ~clkb; // ~71MHz clock B (independent)
-    end
+    assign clkb = clka;
 
     // Test stimulus
     initial begin
@@ -662,22 +657,6 @@ module dpdistram_tb;
         #100000ns;
         $display("ERROR: Testbench timeout!");
         $finish;
-    end
-
-endmodule
-
-// Additional test configurations for different parameters
-module dpdistram_test_configs;
-
-    // Test different configurations
-    initial begin
-        $display("DPDISTRAM Test Configuration Matrix:");
-        $display("- READ_LATENCY_A/B: 0, 1, 2, 3, 5");
-        $display("- RST_MODE_A/B: SYNC, ASYNC");
-        $display("- ADDR_WIDTH_A/B: 4, 6, 8, 10");
-        $display("- READ_DATA_WIDTH_A/B: 8, 16, 32, 64");
-        $display("- BYTE_WRITE_WIDTH_A: 8, 16, 32, 64");
-        $display("Run individual tests by changing parameters in main testbench");
     end
 
 endmodule

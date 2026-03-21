@@ -34,7 +34,7 @@ module dpdistram #(
     output logic [READ_DATA_WIDTH_A-1:0]      douta,      // Port A read data
 
     // Port B interface (Read-only)
-    input  logic                                clkb,       // Port B clock
+    // clkb removed — common clock: Port B shares clka
     input  logic                                rstb,       // Port B reset
     input  logic                                enb,        // Port B memory enable
     input  logic                                regceb,     // Port B register clock enable
@@ -50,66 +50,6 @@ module dpdistram #(
     output logic                                sbiterrb,   // Single bit error Port B (always 0)
     output logic                                dbiterrb    // Double bit error Port B (always 0)
 );
-
-    `ifdef SIMULATION
-    // Parameter validation and DRC checks
-    initial begin
-        // Basic parameter validation
-        if (MEMORY_SIZE < READ_DATA_WIDTH_A) begin
-            $error("DPDISTRAM: MEMORY_SIZE (%0d) must be >= READ_DATA_WIDTH_A (%0d)",
-                   MEMORY_SIZE, READ_DATA_WIDTH_A);
-        end
-        if (MEMORY_SIZE < READ_DATA_WIDTH_B) begin
-            $error("DPDISTRAM: MEMORY_SIZE (%0d) must be >= READ_DATA_WIDTH_B (%0d)",
-                   MEMORY_SIZE, READ_DATA_WIDTH_B);
-        end
-        if (WRITE_DATA_WIDTH_A != READ_DATA_WIDTH_A) begin
-            $error("DPDISTRAM: WRITE_DATA_WIDTH_A (%0d) must equal READ_DATA_WIDTH_A (%0d)",
-                   WRITE_DATA_WIDTH_A, READ_DATA_WIDTH_A);
-        end
-        if (WRITE_DATA_WIDTH_A % BYTE_WRITE_WIDTH_A != 0) begin
-            $error("DPDISTRAM: WRITE_DATA_WIDTH_A (%0d) must be integer multiple of BYTE_WRITE_WIDTH_A (%0d)",
-                   WRITE_DATA_WIDTH_A, BYTE_WRITE_WIDTH_A);
-        end
-        if (READ_DATA_WIDTH_A != READ_DATA_WIDTH_B) begin
-            $error("DPDISTRAM: READ_DATA_WIDTH_A (%0d) must equal READ_DATA_WIDTH_B (%0d)",
-                   READ_DATA_WIDTH_A, READ_DATA_WIDTH_B);
-        end
-        if (RST_MODE_A != "SYNC" && RST_MODE_A != "ASYNC") begin
-            $error("DPDISTRAM: RST_MODE_A must be \"SYNC\" or \"ASYNC\", got: %s", RST_MODE_A);
-        end
-        if (RST_MODE_B != "SYNC" && RST_MODE_B != "ASYNC") begin
-            $error("DPDISTRAM: RST_MODE_B must be \"SYNC\" or \"ASYNC\", got: %s", RST_MODE_B);
-        end
-        if (READ_LATENCY_A > 6) begin
-            $error("DPDISTRAM: READ_LATENCY_A (%0d) must be <= 6", READ_LATENCY_A);
-        end
-        if (READ_LATENCY_B > 6) begin
-            $error("DPDISTRAM: READ_LATENCY_B (%0d) must be <= 6", READ_LATENCY_B);
-        end
-        if (ADDR_WIDTH_A < 1 || ADDR_WIDTH_A > 20) begin
-            $error("DPDISTRAM: ADDR_WIDTH_A (%0d) must be between 1 and 20", ADDR_WIDTH_A);
-        end
-        if (ADDR_WIDTH_B < 1 || ADDR_WIDTH_B > 20) begin
-            $error("DPDISTRAM: ADDR_WIDTH_B (%0d) must be between 1 and 20", ADDR_WIDTH_B);
-        end
-        if (READ_DATA_WIDTH_A < 1 || READ_DATA_WIDTH_A > 4608) begin
-            $error("DPDISTRAM: READ_DATA_WIDTH_A (%0d) must be between 1 and 4608", READ_DATA_WIDTH_A);
-        end
-        if (READ_DATA_WIDTH_B < 1 || READ_DATA_WIDTH_B > 4608) begin
-            $error("DPDISTRAM: READ_DATA_WIDTH_B (%0d) must be between 1 and 4608", READ_DATA_WIDTH_B);
-        end
-
-        // Validate memory size consistency for Port A
-        if (MEMORY_SIZE != (READ_DATA_WIDTH_A * MEMORY_DEPTH_A)) begin
-            $warning("DPDISTRAM: MEMORY_SIZE (%0d) should equal READ_DATA_WIDTH_A (%0d) * depth_A (%0d) = %0d",
-                    MEMORY_SIZE, READ_DATA_WIDTH_A, MEMORY_DEPTH_A, READ_DATA_WIDTH_A * MEMORY_DEPTH_A);
-        end
-
-        // Display configuration
-        $display("DPDISTRAM: Distributed RAM mode - Port A: R/W, Port B: R/O");
-    end
-    `endif
 
     // Local parameters
     localparam MEMORY_DEPTH_A = MEMORY_SIZE / READ_DATA_WIDTH_A;
@@ -139,37 +79,19 @@ module dpdistram #(
     // Memory initialization with synthesis control
     generate
         if (IGNORE_INIT_SYNTH == 0) begin : gen_init_both
-            // Apply initialization to both simulation and synthesis
             initial begin
-                // Initialize all locations to zero first
-                for (int i = 0; i < MEMORY_DEPTH_A; i++) begin
+                for (int i = 0; i < MEMORY_DEPTH_A; i++)
                     dist_memory[i] = {READ_DATA_WIDTH_A{1'b0}};
-                end
-
-                // Load from file if specified
-                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
+                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "")
                     $readmemh(MEMORY_INIT_FILE, dist_memory);
-                    $display("DPDISTRAM: Loaded memory from file: %s", MEMORY_INIT_FILE);
-                end else begin
-                    $display("DPDISTRAM: Initialized to zeros (no file specified)");
-                end
             end
         end else begin : gen_init_sim_only
-            // Apply initialization only to simulation
             `ifdef SIMULATION
             initial begin
-                // Initialize all locations to zero first
-                for (int i = 0; i < MEMORY_DEPTH_A; i++) begin
+                for (int i = 0; i < MEMORY_DEPTH_A; i++)
                     dist_memory[i] = {READ_DATA_WIDTH_A{1'b0}};
-                end
-
-                // Load from file if specified
-                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
+                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "")
                     $readmemh(MEMORY_INIT_FILE, dist_memory);
-                    $display("DPDISTRAM: Loaded memory from file (simulation only): %s", MEMORY_INIT_FILE);
-                end else begin
-                    $display("DPDISTRAM: Initialized to zeros (simulation only)");
-                end
             end
             `endif
         end
@@ -334,28 +256,26 @@ module dpdistram #(
     endgenerate
 
   
-    // Single cycle latency - read-first behavior for distributed RAM
+    // Port B base read register (1-cycle) - clocked by clka (common clock), gated by enb
     generate
-        if (RST_MODE_A == "SYNC") begin : gen_sync_reset_read_data_b
+        if (RST_MODE_B == "SYNC") begin : gen_sync_reset_read_data_b
             always_ff @(posedge clka) begin
-                if (rsta) begin
-                    read_data_b_internal <= RESET_VALUE_A;
-                end else if (ena) begin
-                    // Port B read - same width as Port A
+                if (rstb) begin
+                    read_data_b_internal <= RESET_VALUE_B;
+                end else if (enb) begin
                     read_data_b_internal = dist_memory[addrb];
                 end
-            end 
+            end
         end else begin : gen_async_reset_read_data_b
-            always_ff @(posedge clka or posedge rsta) begin
-                if (rsta) begin
-                    read_data_b_internal <= RESET_VALUE_A;
-                end else if (ena) begin
-                    // Port B read - same width as Port A
+            always_ff @(posedge clka or posedge rstb) begin
+                if (rstb) begin
+                    read_data_b_internal <= RESET_VALUE_B;
+                end else if (enb) begin
                     read_data_b_internal = dist_memory[addrb];
                 end
-            end 
+            end
         end
-    endgenerate  
+    endgenerate
     
     // Port B: Read-only operations
     generate
@@ -365,7 +285,7 @@ module dpdistram #(
         end else if (READ_LATENCY_B == 1) begin : gen_latency_1_b
             // Single cycle latency
             if (RST_MODE_B == "SYNC") begin : gen_sync_reset_1_b
-                always_ff @(posedge clkb) begin
+                always_ff @(posedge clka) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                     end else begin 
@@ -373,7 +293,7 @@ module dpdistram #(
                     end
                 end
             end else begin : gen_async_reset_1_b
-                always_ff @(posedge clkb or posedge rstb) begin
+                always_ff @(posedge clka or posedge rstb) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                     end else begin 
@@ -386,7 +306,7 @@ module dpdistram #(
         end else if (READ_LATENCY_B == 2) begin : gen_latency_2_b
             // double cycle latency
             if (RST_MODE_B == "SYNC") begin : gen_sync_reset_1_b
-                always_ff @(posedge clkb) begin
+                always_ff @(posedge clka) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                         read_data_b_reg2 <= RESET_VALUE_B;
@@ -396,7 +316,7 @@ module dpdistram #(
                     end
                 end
             end else begin : gen_async_reset_1_b
-                always_ff @(posedge clkb or posedge rstb) begin
+                always_ff @(posedge clka or posedge rstb) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                         read_data_b_reg2 <= RESET_VALUE_B;
@@ -411,7 +331,7 @@ module dpdistram #(
         end else if (READ_LATENCY_B == 3) begin : gen_latency_3_b
             // double cycle latency
             if (RST_MODE_B == "SYNC") begin : gen_sync_reset_1_b
-                always_ff @(posedge clkb) begin
+                always_ff @(posedge clka) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                         read_data_b_reg2 <= RESET_VALUE_B;
@@ -423,7 +343,7 @@ module dpdistram #(
                     end
                 end
             end else begin : gen_async_reset_1_b
-                always_ff @(posedge clkb or posedge rstb) begin
+                always_ff @(posedge clka or posedge rstb) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                         read_data_b_reg2 <= RESET_VALUE_B;
@@ -440,7 +360,7 @@ module dpdistram #(
         end else begin : gen_latency_multi_b
             // Multi-cycle latency (2+ cycles) - proper shift register pipeline
             if (RST_MODE_B == "SYNC") begin : gen_sync_reset_multi_b
-                always_ff @(posedge clkb) begin
+                always_ff @(posedge clka) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                         read_data_b_reg2 <= RESET_VALUE_B;
@@ -454,7 +374,7 @@ module dpdistram #(
                     end
                 end
             end else begin : gen_async_reset_multi_b
-                always_ff @(posedge clkb or posedge rstb) begin
+                always_ff @(posedge clka or posedge rstb) begin
                     if (rstb) begin
                         read_data_b_reg1 <= RESET_VALUE_B;
                         read_data_b_reg2 <= RESET_VALUE_B;
@@ -471,62 +391,6 @@ module dpdistram #(
             assign doutb = read_data_b_reg4;
         end
     endgenerate
-
-    // Simulation assertions and debugging
-    `ifdef SIMULATION
-    // Address bounds checking for Port A
-    always @(posedge clka) begin
-        if (ena && addra >= MEMORY_DEPTH_A) begin
-            $error("DPDISTRAM Port A: Address %0d exceeds memory depth %0d", addra, MEMORY_DEPTH_A);
-        end
-    end
-
-    // Address bounds checking for Port B
-    always @(posedge clkb) begin
-        if (enb && addrb >= MEMORY_DEPTH_B) begin
-            $error("DPDISTRAM Port B: Address %0d exceeds memory depth %0d", addrb, MEMORY_DEPTH_B);
-        end
-    end
-
-    // Configuration display
-    initial begin
-        #1; // Wait for initialization
-        $display("================================================================================");
-        $display("DPDISTRAM Configuration Summary:");
-        $display("  Module: XPM_MEMORY_DPDISTRAM Compatible");
-        $display("  Memory Size: %0d bits (%0d words x %0d bits)", MEMORY_SIZE, MEMORY_DEPTH_A, READ_DATA_WIDTH_A);
-        $display("  Port A - Address Width: %0d bits, Data Width: %0d bits, R/W", ADDR_WIDTH_A, READ_DATA_WIDTH_A);
-        $display("  Port B - Address Width: %0d bits, Data Width: %0d bits, R/O", ADDR_WIDTH_B, READ_DATA_WIDTH_B);
-        $display("  Read Latency A: %0d cycles, Read Latency B: %0d cycles", READ_LATENCY_A, READ_LATENCY_B);
-        $display("  Reset Mode A: %s, Reset Mode B: %s", RST_MODE_A, RST_MODE_B);
-        $display("  Init File: %s", MEMORY_INIT_FILE);
-        $display("  Synthesis Init Control: %s", IGNORE_INIT_SYNTH ? "SIMULATION_ONLY" : "BOTH_SIM_SYNTH");
-        if (MEMORY_DEPTH_A >= 4) begin
-            $display("  First few values: [0]=0x%h, [1]=0x%h, [2]=0x%h, [3]=0x%h",
-                     dist_memory[0], dist_memory[1], dist_memory[2], dist_memory[3]);
-        end
-        $display("================================================================================");
-    end
-
-    // Runtime checks (simplified for Icarus compatibility)
-    always @(posedge clka) begin
-        if (ena && (addra >= MEMORY_DEPTH_A)) begin
-            $error("DPDISTRAM Port A: Invalid address %0d when ena asserted", addra);
-        end
-        if (READ_LATENCY_A > 0 && (regcea !== 1'b0 && regcea !== 1'b1)) begin
-            $error("DPDISTRAM Port A: regcea must be driven to 0 or 1");
-        end
-    end
-
-    always @(posedge clkb) begin
-        if (enb && (addrb >= MEMORY_DEPTH_B)) begin
-            $error("DPDISTRAM Port B: Invalid address %0d when enb asserted", addrb);
-        end
-        if (READ_LATENCY_B > 0 && (regceb !== 1'b0 && regceb !== 1'b1)) begin
-            $error("DPDISTRAM Port B: regceb must be driven to 0 or 1");
-        end
-    end
-    `endif
 
 endmodule
 

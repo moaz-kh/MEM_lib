@@ -65,6 +65,7 @@ SYNTH_FLAGS = -D SYNTHESIS          # Define synthesis mode (disable simulation 
 # Usage: make synth-ice40 TOP_MODULE=sprom INIT_FILE=sources/mem/sprom_init.hex
 INIT_FILE ?=
 
+
 # Simulation files
 SIM_TOP = $(SIM_DIR)/$(TESTBENCH).vvp
 WAVE_FILE = $(WAVE_DIR)/$(TESTBENCH).vcd
