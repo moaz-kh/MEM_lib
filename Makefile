@@ -61,6 +61,10 @@ OPENFPGALOADER := $(shell command -v openFPGALoader 2> /dev/null)
 SIM_FLAGS = -D SIMULATION           # Enable simulation features for testbenches
 SYNTH_FLAGS = -D SYNTHESIS          # Define synthesis mode (disable simulation features)
 
+# Optional memory init file for synthesis (e.g. sources/mem/sprom_init.hex)
+# Usage: make synth-ice40 TOP_MODULE=sprom INIT_FILE=sources/mem/sprom_init.hex
+INIT_FILE ?=
+
 # Simulation files
 SIM_TOP = $(SIM_DIR)/$(TESTBENCH).vvp
 WAVE_FILE = $(WAVE_DIR)/$(TESTBENCH).vcd
@@ -405,15 +409,20 @@ ifdef YOSYS
 	@echo "Auto-configured: Family=$(FPGA_FAMILY), Device=$(FPGA_DEVICE), Package=$(FPGA_PACKAGE)"
 	@echo "Reading source files and synthesizing..."
 	@echo "# Auto-generated Yosys script for iCE40" > $(SYNTH_DIR)/yosys_script_ice40.ys
-	@sed '/# Testbench Files/q' $(FILELIST) | grep '^/' | while read file; do \
-		case "$$file" in \
-			*.sv) echo "read_verilog -sv $(SYNTH_FLAGS) $$file" ;; \
-			*.v)  echo "read_verilog $(SYNTH_FLAGS) $$file" ;; \
-			*.vhd|*.vhdl) echo "read_vhdl $$file" ;; \
-			*) echo "# Unsupported file type: $$file" ;; \
-		esac; \
-	done >> $(SYNTH_DIR)/yosys_script_ice40.ys
+	@RTL_FILE=$$(grep -m1 "/$(TOP_MODULE)\.sv\b\|/$(TOP_MODULE)\.v\b" $(FILELIST)); \
+	if [ -z "$$RTL_FILE" ]; then \
+		echo "ERROR: Could not find RTL file for module '$(TOP_MODULE)' in $(FILELIST)"; \
+		exit 1; \
+	fi; \
+	case "$$RTL_FILE" in \
+		*.sv) echo "read_verilog -sv $(SYNTH_FLAGS) $$RTL_FILE" ;; \
+		*.v)  echo "read_verilog $(SYNTH_FLAGS) $$RTL_FILE" ;; \
+	esac >> $(SYNTH_DIR)/yosys_script_ice40.ys
 	@echo "hierarchy -check -top $(TOP_MODULE)" >> $(SYNTH_DIR)/yosys_script_ice40.ys
+	@if [ -n "$(INIT_FILE)" ]; then \
+		echo "chparam -set MEMORY_INIT_FILE \"$(INIT_FILE)\"" >> $(SYNTH_DIR)/yosys_script_ice40.ys; \
+		echo "Using memory init file: $(INIT_FILE)"; \
+	fi
 	@# Timing constraint information for iCE40 flow
 	@echo ""
 	@echo "=== iCE40 TIMING CONSTRAINT NOTICE ==="
@@ -425,8 +434,14 @@ ifdef YOSYS
 	@echo "synth_ice40 -top $(TOP_MODULE) -json $(ICE40_JSON)" >> $(SYNTH_DIR)/yosys_script_ice40.ys
 	@echo "stat -top $(TOP_MODULE)" >> $(SYNTH_DIR)/yosys_script_ice40.ys
 	@echo "write_verilog $(SYNTH_DIR)/$(PROJECT)_ice40_synth.v" >> $(SYNTH_DIR)/yosys_script_ice40.ys
-	@$(YOSYS) -q -s $(SYNTH_DIR)/yosys_script_ice40.ys 2>&1 | tee $(REPORTS_DIR)/$(PROJECT)_ice40_synth.log
+	@$(YOSYS) -s $(SYNTH_DIR)/yosys_script_ice40.ys > $(REPORTS_DIR)/$(PROJECT)_ice40_synth.log 2>&1; \
+	if [ $$? -ne 0 ]; then \
+		echo "ERROR: Synthesis failed! Check log: $(REPORTS_DIR)/$(PROJECT)_ice40_synth.log"; \
+		grep "ERROR" $(REPORTS_DIR)/$(PROJECT)_ice40_synth.log | head -5; \
+		exit 1; \
+	fi
 	@echo "iCE40 synthesis complete!"
+	@grep -A 20 "^=== $(TOP_MODULE) ===" $(REPORTS_DIR)/$(PROJECT)_ice40_synth.log | head -20 || true
 	@echo "   Device: $(FPGA_DEVICE) ($(FPGA_PACKAGE))"
 	@echo "   JSON: $(ICE40_JSON)"
 	@echo "   Netlist: $(SYNTH_DIR)/$(PROJECT)_ice40_synth.v"

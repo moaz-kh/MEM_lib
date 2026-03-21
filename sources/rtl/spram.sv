@@ -36,22 +36,6 @@ module spram #(
     output logic                                    dbiterra    // Double bit error (always 0)
 );
 
-    // Parameter validation
-    initial begin
-        if (READ_DATA_WIDTH_A != WRITE_DATA_WIDTH_A) begin
-            $error("SPRAM: READ_DATA_WIDTH_A (%0d) must equal WRITE_DATA_WIDTH_A (%0d)",
-                   READ_DATA_WIDTH_A, WRITE_DATA_WIDTH_A);
-        end
-        if (WRITE_DATA_WIDTH_A % BYTE_WRITE_WIDTH_A != 0) begin
-            $error("SPRAM: WRITE_DATA_WIDTH_A (%0d) must be multiple of BYTE_WRITE_WIDTH_A (%0d)",
-                   WRITE_DATA_WIDTH_A, BYTE_WRITE_WIDTH_A);
-        end
-        if (MEMORY_SIZE < WRITE_DATA_WIDTH_A) begin
-            $error("SPRAM: MEMORY_SIZE (%0d) must be >= WRITE_DATA_WIDTH_A (%0d)",
-                   MEMORY_SIZE, WRITE_DATA_WIDTH_A);
-        end
-    end
-
     // Local parameters
     localparam MEMORY_DEPTH = MEMORY_SIZE / WRITE_DATA_WIDTH_A;
     localparam WEA_WIDTH = WRITE_DATA_WIDTH_A / BYTE_WRITE_WIDTH_A;
@@ -65,6 +49,7 @@ module spram #(
     logic [READ_DATA_WIDTH_A-1:0] read_data_internal;
     logic [READ_DATA_WIDTH_A-1:0] read_data_next; // Combinational next value
     logic [READ_DATA_WIDTH_A-1:0] read_data_reg1, read_data_reg2, read_data_reg3, read_data_reg4;
+    logic [WRITE_DATA_WIDTH_A-1:0] write_first_new_data; // Used by write_first combinational logic
 
     // Combinational logic for read data next value - generated based on write mode
     generate
@@ -83,15 +68,14 @@ module spram #(
                     // Return new data when writing, old data when reading
                     if (|wea) begin
                         // Construct the new data word with byte enables
-                        logic [WRITE_DATA_WIDTH_A-1:0] new_data;
-                        new_data = memory[addra]; // Start with old data
+                        write_first_new_data = memory[addra]; // Start with old data
                         for (int i = 0; i < WEA_WIDTH; i++) begin
                             if (wea[i]) begin
-                                new_data[(i+1)*BYTE_WRITE_WIDTH_A-1 -: BYTE_WRITE_WIDTH_A] =
+                                write_first_new_data[(i+1)*BYTE_WRITE_WIDTH_A-1 -: BYTE_WRITE_WIDTH_A] =
                                     dina[(i+1)*BYTE_WRITE_WIDTH_A-1 -: BYTE_WRITE_WIDTH_A];
                             end
                         end
-                        read_data_next = new_data;
+                        read_data_next = write_first_new_data;
                     end else begin
                         read_data_next = memory[addra]; // Normal read
                     end
@@ -130,45 +114,25 @@ module spram #(
     // Memory initialization based on IGNORE_INIT_SYNTH
     generate
         if (IGNORE_INIT_SYNTH == 0) begin : gen_init_both
-            // Apply to both simulation and synthesis
             initial begin
-                // ALWAYS initialize to zeros first (default safe state)
-                for (int i = 0; i < MEMORY_DEPTH; i++) begin
+                for (int i = 0; i < MEMORY_DEPTH; i++)
                     memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
-                end
-
-                // THEN conditionally load from file (overlay)
-                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
+                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "")
                     $readmemh(MEMORY_INIT_FILE, memory);
-                    $display("SPRAM: Loaded memory from file: %s", MEMORY_INIT_FILE);
-                end else begin
-                    $display("SPRAM: Initialized to zeros (no file specified)");
-                end
             end
         end else begin : gen_init_sim_only
-            // Simulation only initialization
             `ifdef SIMULATION
-                initial begin
-                    // ALWAYS initialize to zeros first (default safe state)
-                    for (int i = 0; i < MEMORY_DEPTH; i++) begin
-                        memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
-                    end
-
-                    // THEN conditionally load from file (overlay)
-                    if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "") begin
-                        $readmemh(MEMORY_INIT_FILE, memory);
-                        $display("SPRAM: Loaded memory from file (simulation only): %s", MEMORY_INIT_FILE);
-                    end else begin
-                        $display("SPRAM: Initialized to zeros (simulation only)");
-                    end
-                end
+            initial begin
+                for (int i = 0; i < MEMORY_DEPTH; i++)
+                    memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
+                if (MEMORY_INIT_FILE != "none" && MEMORY_INIT_FILE != "")
+                    $readmemh(MEMORY_INIT_FILE, memory);
+            end
             `else
-                // In synthesis, always zero-initialize for safety
-                initial begin
-                    for (int i = 0; i < MEMORY_DEPTH; i++) begin
-                        memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
-                    end
-                end
+            initial begin
+                for (int i = 0; i < MEMORY_DEPTH; i++)
+                    memory[i] = {WRITE_DATA_WIDTH_A{1'b0}};
+            end
             `endif
         end
     endgenerate
@@ -338,35 +302,5 @@ module spram #(
             assign douta = read_data_reg4;
         end
     endgenerate
-
-    // Simulation assertions for debugging
-    `ifdef SIMULATION
-    always @(posedge clka) begin
-        if (ena && addra >= MEMORY_DEPTH) begin
-            $error("SPRAM: Address 0x%0h exceeds memory depth %0d", addra, MEMORY_DEPTH);
-        end
-        if (ena && |wea && addra >= MEMORY_DEPTH) begin
-            $error("SPRAM: Write to address 0x%0h exceeds memory depth %0d", addra, MEMORY_DEPTH);
-        end
-    end
-
-    // Display configuration at start of simulation
-    initial begin
-        $display("=== SPRAM Configuration ===");
-        $display("ADDR_WIDTH_A: %0d", ADDR_WIDTH_A);
-        $display("WRITE_DATA_WIDTH_A: %0d", WRITE_DATA_WIDTH_A);
-        $display("READ_DATA_WIDTH_A: %0d", READ_DATA_WIDTH_A);
-        $display("BYTE_WRITE_WIDTH_A: %0d", BYTE_WRITE_WIDTH_A);
-        $display("MEMORY_SIZE: %0d bits", MEMORY_SIZE);
-        $display("MEMORY_DEPTH: %0d words", MEMORY_DEPTH);
-        $display("WEA_WIDTH: %0d bits", WEA_WIDTH);
-        $display("READ_LATENCY_A: %0d", READ_LATENCY_A);
-        $display("WRITE_MODE_A: %s", WRITE_MODE_A);
-        $display("RST_MODE_A: %s", RST_MODE_A);
-        $display("MEMORY_INIT_FILE: %s", MEMORY_INIT_FILE);
-        $display("IGNORE_INIT_SYNTH: %0d", IGNORE_INIT_SYNTH);
-        $display("========================");
-    end
-    `endif
 
 endmodule

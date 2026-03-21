@@ -451,7 +451,19 @@ module spram_tb;
                 regcea = 1'b0;
             end 
         end
- 
+
+        // Check the final address (MEMORY_DEPTH-1) — the loop exits before checking it
+        if (douta == expected_val) begin
+            $display("[PASS] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
+                MEMORY_DEPTH-1, douta, expected_val);
+            total_pass++;
+        end else begin
+            $display("[FAIL] Memory Init: Address 0x%02X = 0x%02X (expected 0x%02X)",
+                MEMORY_DEPTH-1, douta, expected_val);
+            total_fail++;
+            config_fail++;
+        end
+
         $display("Memory initialization test completed.");
     endtask
 
