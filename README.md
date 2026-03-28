@@ -121,6 +121,7 @@ Both ports support independent read/write. RTL uses the same single `always_ff` 
 ```
 MEM_lib/
 ├── README.md
+├── CLAUDE.md                       # Claude Code project guidance
 ├── TODO.md                         # Known pending work
 ├── Makefile                        # Build system
 ├── sources/
